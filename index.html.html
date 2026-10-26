@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Мой редактор кода</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #1e1e2e;
+    color: #cdd6f4;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ---------- Панель инструментов ---------- */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: #181825;
+    border-bottom: 1px solid #313244;
+    flex-wrap: wrap;
+  }
+
+  .toolbar h1 {
+    font-size: 15px;
+    font-weight: 600;
+    color: #89b4fa;
+    margin-right: auto;
+    white-space: nowrap;
+  }
+
+  .toolbar label {
+    font-size: 13px;
+    color: #a6adc8;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  select, button {
+    font-family: inherit;
+    font-size: 13px;
+    border: none;
+    border-radius: 6px;
+    padding: 7px 14px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+  }
+
+  select {
+    background: #313244;
+    color: #cdd6f4;
+  }
+
+  button {
+    background: #89b4fa;
+    color: #1e1e2e;
+    font-weight: 600;
+  }
+
+  button:hover { background: #a6c8ff; }
+  button:active { transform: scale(0.97); }
+
+  button.secondary {
+    background: #45475a;
+    color: #cdd6f4;
+  }
+  button.secondary:hover { background: #585b70; }
+
+  button.success {
+    background: #a6e3a1;
+  }
+  button.success:hover { background: #b9edb5; }
+
+  /* ---------- Рабочая область ---------- */
+  .workspace {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
+
+  .editor-pane, .preview-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .editor-pane { border-right: 1px solid #313244; }
+
+  .pane-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #6c7086;
+    padding: 8px 16px;
+    background: #181825;
+    border-bottom: 1px solid #313244;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .status {
+    font-size: 11px;
+    color: #6c7086;
+  }
+
+  textarea {
+    flex: 1;
+    width: 100%;
+    resize: none;
+    border: none;
+    outline: none;
+    padding: 16px;
+    background: #1e1e2e;
+    color: #cdd6f4;
+    font-family: 'Consolas', 'Fira Code', 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    tab-size: 2;
+  }
+
+  textarea::placeholder { color: #585b70; }
+
+  iframe {
+    flex: 1;
+    width: 100%;
+    border: none;
+    background: #ffffff;
+  }
+
+  /* ---------- Адаптивность ---------- */
+  @media (max-width: 768px) {
+    .workspace { flex-direction: column; }
+    .editor-pane {
+      border-right: none;
+      border-bottom: 1px solid #313244;
+      height: 50%;
+    }
+    .toolbar h1 { display: none; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="toolbar">
+    <h1>⚡ Редактор кода</h1>
+
+    <label>Язык:
+      <select id="langSelect">
+        <option value="html">HTML + CSS + JS</option>
+        <option value="css">CSS</option>
+        <option value="js">JavaScript</option>
+      </select>
+    </label>
+
+    <button id="runBtn" class="success" title="Ctrl+Enter">▶ Запустить</button>
+    <button id="clearBtn" class="secondary">Очистить</button>
+    <button id="copyBtn" class="secondary">Копировать</button>
+    <button id="downloadBtn" class="secondary">Скачать</button>
+  </div>
+
+  <div class="workspace">
+    <div class="editor-pane">
+      <div class="pane-title">
+        <span>Код</span>
+        <span class="status" id="status">Готов</span>
+      </div>
+      <textarea id="codeInput" spellcheck="false"
+        placeholder="Введите код здесь...&#10;&#10;Например для HTML:&#10;<h1>Привет, мир!</h1>&#10;<p>Это моя первая страница.</p>"></textarea>
+    </div>
+
+    <div class="preview-pane">
+      <div class="pane-title">
+        <span>Результат</span>
+        <span class="status" id="sizeStatus"></span>
+      </div>
+      <iframe id="preview" title="Предпросмотр"></iframe>
+    </div>
+  </div>
+
+<script>
+  const codeInput = document.getElementById('codeInput');
+  const preview   = document.getElementById('preview');
+  const langSelect = document.getElementById('langSelect');
+  const statusEl  = document.getElementById('status');
+  const sizeEl    = document.getElementById('sizeStatus');
+
+  /* ---------- Обновление статуса ---------- */
+  function updateStatus(msg, isError = false) {
+    statusEl.textContent = msg;
+    statusEl.style.color = isError ? '#f38ba8' : '#6c7086';
+  }
+
+  function updateSize() {
+    sizeEl.textContent = codeInput.value.length + ' симв.';
+  }
+
+  /* ---------- Запуск кода ---------- */
+  function runCode() {
+    const code = codeInput.value;
+    const lang = langSelect.value;
+
+    if (!code.trim()) {
+      updateStatus('Пусто — введите код', true);
+      return;
+    }
+
+    try {
+      if (lang === 'html') {
+        preview.srcdoc = code;
+      } else if (lang === 'css') {
+        preview.srcdoc = `<!DOCTYPE html><html><head><style>${code}</style></head>
+          <body><h1>Заголовок</h1><p>Параграф текста для демонстрации стилей.</p>
+          <button>Кнопка</button></body></html>`;
+      } else if (lang === 'js') {
+        preview.srcdoc = `<!DOCTYPE html><html><head><style>
+          body{font-family:monospace;padding:20px;background:#fff;color:#222;}
+          pre{background:#f4f4f4;padding:12px;border-radius:6px;overflow:auto;}
+        </style></head><body><pre id="out"></pre>
+        <script>
+          const out = document.getElementById('out');
+          const log = (v) => out.textContent += (typeof v === 'object' ? JSON.stringify(v, null, 2) : v) + '\\n';
+          const console = { log, error: log, warn: log, info: log };
+          try {
+            ${code}
+          } catch (e) {
+            out.textContent += '❌ Ошибка: ' + e.message;
+          }
+        <\/script></body></html>`;
+      }
+      updateStatus('Выполнено ✓');
+    } catch (e) {
+      updateStatus('Ошибка: ' + e.message, true);
+    }
+  }
+
+  /* ---------- Кнопки ---------- */
+  document.getElementById('runBtn').addEventListener('click', runCode);
+
+  document.getElementById('clearBtn').addEventListener('click', () => {
+    codeInput.value = '';
+    preview.srcdoc = '';
+    updateStatus('Очищено');
+    updateSize();
+    codeInput.focus();
+  });
+
+  document.getElementById('copyBtn').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(codeInput.value);
+      updateStatus('Скопировано ✓');
+    } catch {
+      updateStatus('Не удалось скопировать', true);
+    }
+  });
+
+  document.getElementById('downloadBtn').addEventListener('click', () => {
+    const lang = langSelect.value;
+    const extMap = { html: 'html', css: 'css', js: 'js' };
+    const blob = new Blob([codeInput.value], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'code.' + extMap[lang];
+    a.click();
+    URL.revokeObjectURL(a.href);
+    updateStatus('Файл скачан ✓');
+  });
+
+  /* ---------- Горячие клавиши ---------- */
+  codeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const start = codeInput.selectionStart;
+      const end = codeInput.selectionEnd;
+      codeInput.value = codeInput.value.substring(0, start) + '  ' + codeInput.value.substring(end);
+      codeInput.selectionStart = codeInput.selectionEnd = start + 2;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      runCode();
+    }
+  });
+
+  codeInput.addEventListener('input', updateSize);
+  updateSize();
+</script>
+</body>
+</html>
